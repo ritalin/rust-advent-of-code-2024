@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufRead, BufReader}};
+use std::{fs::File, io::{BufRead, BufReader}, path::Path};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 enum Comparison {
@@ -8,8 +8,14 @@ enum Comparison {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let mut reader = BufReader::new(File::open("./aoc_input_example.txt")?);
-    let mut reader = BufReader::new(File::open("./aoc_input.txt")?);
+    println!("total: {}", solve("./aoc_input.txt")?);
+    Ok(())
+}
+
+fn solve<P>(path: P) -> Result<i32, Box<dyn std::error::Error>> 
+    where P: AsRef<Path>
+{
+    let mut reader = BufReader::new(File::open(path)?);
 
     let mut buf = String::new();
     let mut safe_count = 0;
@@ -26,9 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         buf.clear();
     }
-    
-    println!("Safes: {}", safe_count);
-    Ok(())
+
+    Ok(safe_count)
 }
 
 fn judge(levels: &Vec<i32>) -> bool {
@@ -76,4 +81,14 @@ fn judge_internal(levels: &Vec<i32>) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn solve_example() -> Result<(), Box<dyn std::error::Error>> {
+        let actual = crate::solve("./aoc_input_example.txt")?;
+        assert_eq!(4, actual);
+        Ok(())
+    }
 }

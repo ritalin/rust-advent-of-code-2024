@@ -1,4 +1,5 @@
 use std::io::BufRead;
+use std::path::Path;
 use std::{fs::File, io::BufReader};
 use std::collections::HashMap;
 
@@ -12,8 +13,14 @@ struct GroupItem {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let mut reader = BufReader::new(File::open("./aoc_input_example.txt")?);
-    let mut reader = BufReader::new(File::open("./aoc_input.txt")?);
+    println!("total: {}", solve("./aoc_input.txt")?);
+    Ok(())
+}
+
+fn solve<P>(path: P) -> Result<i32, Box<dyn std::error::Error>>
+    where P: AsRef<Path>
+{
+    let mut reader = BufReader::new(File::open(path)?);
 
     let mut buf = String::new();
     let mut entries = vec![];
@@ -61,7 +68,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .sum()
     ;
 
-    println!("total: {}", total);
+    Ok(total)
+}
 
-    Ok(())
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn solve_example() -> Result<(), Box<dyn std::error::Error>> {
+        let actual = crate::solve("./aoc_input_example.txt")?;
+        assert_eq!(31, actual);
+        Ok(())
+    }
 }

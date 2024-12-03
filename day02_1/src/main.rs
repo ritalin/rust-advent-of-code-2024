@@ -1,4 +1,9 @@
-use std::{fs::File, io::{BufRead, BufReader}, mem::discriminant};
+use std::{fs::File, io::{BufRead, BufReader}, mem::discriminant, path::Path};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {    
+    println!("Safes: {}", solve("./aoc_input.txt")?);
+    Ok(())
+}
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -8,9 +13,10 @@ enum Comparison {
     Dec(i32),
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let mut reader = BufReader::new(File::open("./aoc_input_example.txt")?);
-    let mut reader = BufReader::new(File::open("./aoc_input.txt")?);
+fn solve<P>(path: P) -> Result<i32, Box<dyn std::error::Error>> 
+    where P: AsRef<Path>
+{
+    let mut reader = BufReader::new(File::open(path)?);
 
     let mut buf = String::new();
     let mut safe_count = 0;
@@ -48,7 +54,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         buf.clear();
     }
-    
-    println!("Safes: {}", safe_count);
-    Ok(())
+
+    Ok(safe_count)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn solve_example() -> Result<(), Box<dyn std::error::Error>> {
+        let actual = crate::solve("./aoc_input_example.txt")?;
+        assert_eq!(2, actual);
+        Ok(())
+    }
 }
