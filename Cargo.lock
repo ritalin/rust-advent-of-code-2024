@@ -62,6 +62,14 @@ name = "day07_2"
 version = "0.1.0"
 
 [[package]]
+name = "day08_1"
+version = "0.1.0"
+
+[[package]]
+name = "day08_2"
+version = "0.1.0"
+
+[[package]]
 name = "day3_2"
 version = "0.1.0"
 
