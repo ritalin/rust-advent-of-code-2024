@@ -142,10 +142,9 @@ mod tests {
     use crate::*;
 
     #[test]
-    #[ignore]
     fn solve_example() -> Result<(), Box<dyn std::error::Error>> {
         let actual = solve("./aoc_input_example.txt")?;
-        assert_eq!(1928, actual);
+        assert_eq!(2858, actual);
         Ok(())
     }
 
