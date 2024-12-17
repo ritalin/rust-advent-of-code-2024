@@ -21,49 +21,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "day01_1"
-version = "0.1.0"
-
-[[package]]
-name = "day01_2"
-version = "0.1.0"
-dependencies = [
- "itertools",
-]
-
-[[package]]
-name = "day02_1"
-version = "0.1.0"
-
-[[package]]
-name = "day02_2"
-version = "0.1.0"
-
-[[package]]
-name = "day03_1"
-version = "0.1.0"
-
-[[package]]
-name = "day04_1"
-version = "0.1.0"
-
-[[package]]
-name = "day04_2"
-version = "0.1.0"
-
-[[package]]
-name = "day05_1"
-version = "0.1.0"
-
-[[package]]
-name = "day05_2"
-version = "0.1.0"
-
-[[package]]
-name = "day05_2b"
-version = "0.1.0"
-
-[[package]]
 name = "day06_1"
 version = "0.1.0"
 
@@ -155,23 +112,12 @@ name = "day16_2"
 version = "0.1.0"
 
 [[package]]
-name = "day3_2"
+name = "day17_1"
 version = "0.1.0"
 
 [[package]]
-name = "either"
-version = "1.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
+name = "day17_2"
+version = "0.1.0"
 
 [[package]]
 name = "winapi"
