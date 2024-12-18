@@ -1,0 +1,63 @@
+warning: virtual workspace defaulting to `resolver = "1"` despite one or more workspace members being on edition 2021 which implies `resolver = "2"`
+note: to keep the current resolver, specify `workspace.resolver = "1"` in the workspace root's manifest
+note: to use the edition 2021 resolver, specify `workspace.resolver = "2"` in the workspace root's manifest
+note: for more details see https://doc.rust-lang.org/cargo/reference/resolver.html#resolver-versions
+warning: variable does not need to be mutable
+  --> day18_1/src/main.rs:11:9
+   |
+11 |     let mut board = Board::new(width, height, &read_file(path)?);
+   |         ----^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` on by default
+
+warning: enum `Direction` is never used
+  --> day18_1/src/main.rs:27:6
+   |
+27 | enum Direction {
+   |      ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `iter` and `next` are never used
+  --> day18_1/src/main.rs:32:8
+   |
+31 | impl Direction {
+   | -------------- associated items in this implementation
+32 |     fn iter(d0: &Direction) -> Vec<Direction> {
+   |        ^^^^
+...
+42 |     fn next(&self, (x0, y0): Point, width: usize, height: usize) -> Option<Point> {
+   |        ^^^^
+
+warning: enum `PatternError` is never used
+  --> day18_1/src/main.rs:65:6
+   |
+65 | enum PatternError {
+   |      ^^^^^^^^^^^^
+
+warning: struct `QItem` is never constructed
+  --> day18_1/src/main.rs:77:8
+   |
+77 | struct QItem {
+   |        ^^^^^
+
+warning: methods `find_route` and `find_route_internal` are never used
+   --> day18_1/src/main.rs:106:8
+    |
+89  | impl Board {
+    | ---------- methods in this implementation
+...
+106 |     fn find_route(&mut self, p0: Point, goal: Point) -> Option<u64> {
+    |        ^^^^^^^^^^
+...
+129 |     fn find_route_internal(&mut self, p0: Point, d0: Direction, score0: u64, q: &mut VecDeque<QItem>) {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: `day18_1` (bin "day18_1") generated 6 warnings (run `cargo fix --bin "day18_1"` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running `/Users/tamurakazuhiko/work/test/advent-of-code/2024/rust/target/debug/day18_1`
+thread 'main' panicked at day18_1/src/main.rs:95:20:
+index out of bounds: the len is 4900 but the index is 4947
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
