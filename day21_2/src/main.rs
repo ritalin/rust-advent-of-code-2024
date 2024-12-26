@@ -1,6 +1,7 @@
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path};
+use std::{collections::{HashMap, HashSet}, fs::File, hash::BuildHasherDefault, io::{BufRead, BufReader}, path::Path, u64};
 
-use iter_tools::Itertools;
+type StableHashMap<K, V> = HashMap<K, V, std::hash::BuildHasherDefault<std::hash::DefaultHasher>>;
+type StableHashSet<V> = HashSet<V, BuildHasherDefault<std::hash::DefaultHasher>>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("total: {:?}", solve("./aoc_input.txt")?);
@@ -12,11 +13,11 @@ fn solve<P>(path: P) -> Result<u64, Box<dyn std::error::Error>>
 {
     let sequences = read_file(path)?;
     
-    let control_pad = PadLayout::new_control_pad();
-    let shortest_keys = init_keypad_shortest_path(&control_pad);
+    let shortest_keys = init_keypad_shortest_path();
     let shortest_controls = init_controlpad_shortest_path();
     
     let total = sequences.into_iter()
+    // .map(|seq| eval_route_len::<26>(&seq, &shortest_keys, &shortest_controls).unwrap())
         .map(|seq| eval_route_len::<26>(&seq, &shortest_keys, &shortest_controls).unwrap())
         .map(|(len, seq)| len * seq)
         .sum::<u64>()
@@ -42,7 +43,6 @@ struct PadLayout {
     width: usize,
     height: usize,
     layout: Vec<Option<char>>,
-    index_act: usize,
 }
 
 impl PadLayout {
@@ -58,7 +58,6 @@ impl PadLayout {
             layout,
             width: 3,
             height: 4,
-            index_act: 11,
         }
     }
 
@@ -72,7 +71,6 @@ impl PadLayout {
             layout,
             width: 3,
             height: 2,
-            index_act: 2,
         }
     }
 
@@ -84,36 +82,27 @@ impl PadLayout {
         x + y * self.width
     }
 
-    fn can_aimed(&self, mut p0: Point, d0: &[Direction], d1: &[Direction]) -> bool {
-        for d in d0 {
-            let Some(p) = d.next(p0, self.width, self.height) else {
-                return false;
-            };
-            if self.layout[self.to_index(p)].is_none() {
-                return false;
+    fn cost(&self, actions: &[Action]) -> usize {
+        let mut cost = 0;
+
+        for pair in actions.windows(2) {
+            match (&pair[0], &pair[1]) {
+                (Action::Move(d1), Action::Move(d2)) => {
+                    cost += 1;
+                    if !Direction::is_straight(&d1, &d2) {
+                        cost += 10;
+                    }
+                }
+                _ => {}
             }
-            p0 = p;
         }
-        for d in d1 {
-            let Some(p) = d.next(p0, self.width, self.height) else {
-                return false;
-            };
-            if self.layout[self.to_index(p)].is_none() {
-                return false;
-            }
-            p0 = p;
-        }
-        
-        true
+
+        cost
     }
 
-    fn cost(&self, ch: char) -> usize {
-        let Some(index_ch) = self.layout.iter().position(|&pad| pad == Some(ch)) else {
-            return 0;
-        };
-
-        let (x0, y0) = self.from_index(index_ch);
-        let (x1, y1) = self.from_index(self.index_act);
+    fn distance(&self, index_1: usize, index_2: usize) -> usize {
+        let (x0, y0) = self.from_index(index_1);
+        let (x1, y1) = self.from_index(index_2);
 
         x0.abs_diff(x1) + y0.abs_diff(y1)
     }
@@ -154,6 +143,14 @@ impl Direction {
             Direction::W => '<',
         }
     }
+
+    fn is_straight(d1: &Direction, d2: &Direction) -> bool {
+        match (d1, d2) {
+            (Direction::E, Direction::E) | (Direction::E, Direction::W) => true,
+            (Direction::N, Direction::N) | (Direction::S, Direction::S) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Debug)]
@@ -165,9 +162,9 @@ enum Action {
 
 type RouteKey = (char, char);
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct Route {
-    path: Vec<Action>,
+    actions: Vec<Action>,
     distance: usize,
 }
 
@@ -176,74 +173,39 @@ impl Route {
         (from, to)
     }
 
-    fn new(path: &[Action], distance: usize) -> Self {
+    fn new(path: &[Action]) -> Self {
         Self { 
-            path: Vec::from(path),
-            distance 
+            actions: Vec::from(path),
+            distance: path.len(),
         }
     }
 
-    fn reorder_path(&mut self, p0: Point, key_pads: &PadLayout, control_pads: &PadLayout) {
-        let map = self.path.iter()
-            .filter_map(|actiond| match actiond {
-                Action::Move(d) => Some(d.clone()),
-                Action::Push => None,
-            })
-            .group_by(|d| d.clone()).into_iter()
-            .map(|(d, g)| (d.clone(), g.count()))
-            .collect::<Vec<_>>()
-        ;
-
-        if map.len() == 2 {
-            let mut lhs = std::iter::repeat(map[0].0.clone()).take(map[0].1).collect::<Vec<_>>();
-            let mut rhs = std::iter::repeat(map[1].0.clone()).take(map[1].1).collect::<Vec<_>>();
-
-            let path = match (key_pads.can_aimed(p0, &lhs, &rhs), key_pads.can_aimed(p0, &rhs, &lhs)) {
-                (true, false) => {
-                    lhs.append(&mut rhs);
-                    lhs
-                }
-                (true, true) if control_pads.cost(map[0].0.to_control_pad()) >= control_pads.cost(map[1].0.to_control_pad()) => {
-                    lhs.append(&mut rhs);
-                    lhs
-                }
-                (false, true) |
-                (true, true) => {
-                    rhs.append(&mut lhs);
-                    rhs
-                }
-                (false, false) => return,
-            };
-
-            self.path = path.into_iter().map(|d| Action::Move(d.clone())).collect();
-        }
+    fn prepend_action_path(&mut self, action: Action) {
+        self.actions.insert(0, action);
+        self.distance += 1;
     }
 }
 
-fn init_keypad_shortest_path(control_pad: &PadLayout) -> HashMap<RouteKey, String> {
+fn init_keypad_shortest_path() -> StableHashMap<RouteKey, Vec<String>> {
     let pads = PadLayout::new_key_pad();
 
-    let mut paths = HashMap::<RouteKey, Route>::new();
+    let mut paths = StableHashMap::<RouteKey, Vec<Route>>::default();
 
     for (index_from, _) in pads.layout.iter().enumerate() {
         for (index_to, _) in pads.layout.iter().enumerate() {
             let mut processing = vec![false; pads.layout.len()];
 
-            if let Some(key) = init_shortest_path_internal(index_from, index_to, &pads, &mut paths, &mut processing) {
-                if let Some(route) = paths.get_mut(&key) {
-                    route.reorder_path(pads.from_index(index_from), &pads, &control_pad);
-                }
-            }
+            init_shortest_path_internal(index_from, index_to, &pads, &mut paths, &mut processing);
         }
     }
 
-    format_shortest_route(&paths)
+    format_shortest_route(&pads, &paths)
 }
 
-fn init_controlpad_shortest_path() -> HashMap<RouteKey, String> {
+fn init_controlpad_shortest_path() -> StableHashMap<RouteKey, Vec<String>> {
     let pads = PadLayout::new_control_pad();
 
-    let mut paths = HashMap::<RouteKey, Route>::new();
+    let mut paths = StableHashMap::<RouteKey, Vec<Route>>::default();
 
     for (index_from, from) in pads.layout.iter().enumerate() {
         for (index_to, to) in pads.layout.iter().enumerate() {
@@ -252,7 +214,8 @@ fn init_controlpad_shortest_path() -> HashMap<RouteKey, String> {
             if index_from == index_to {
                 match (from, to) {
                     (Some(from), Some(to)) => {
-                        paths.insert((*from, *to), Route::new(&vec![], 0));
+                        paths.entry((*from, *to))
+                        .or_insert_with(|| Vec::<Route>::from_iter([Route::new(&vec![])]));
                     }
                     _ => {}
                 }
@@ -262,29 +225,30 @@ fn init_controlpad_shortest_path() -> HashMap<RouteKey, String> {
         }
     }
 
-    format_shortest_route(&paths)
+    format_shortest_route(&pads, &paths)
 }
 
-fn init_shortest_path_internal(index_from: usize, index_to: usize, pads: &PadLayout, paths: &mut HashMap<RouteKey, Route>, processing: &mut [bool]) -> Option<RouteKey> {
-    if processing[index_from] {
-        return None;
-    }
-    processing[index_from] = true;
-
+fn init_shortest_path_internal<'a>(index_from: usize, index_to: usize, pads: &PadLayout, paths: &mut StableHashMap<RouteKey, Vec<Route>>, processing: &mut [bool]) -> Option<Vec<Route>> {
     let Some(from) = pads.layout[index_from] else {
         return None;
     };
     let Some(to) = pads.layout[index_to] else {
         return None;
     };
+    if let Some(routes) = paths.get(&Route::of_key(from, to)) {
+        if processing[index_from] {
+            return Some(routes.clone());
+        }
+    }
     if from == to {
+        paths.insert(Route::of_key(from, to), Vec::<Route>::from_iter([Route::new(&[])]));
         return None;
     }
-    if paths.contains_key(&Route::of_key(from, to)) {
-        return Some(Route::of_key(from, to));
+    if processing[index_from] {
+        return None;
     }
+    processing[index_from] = true;
 
-    let mut shortest_path = None;
     let p0 = pads.from_index(index_from);
 
     for d in Direction::iter() {
@@ -297,128 +261,289 @@ fn init_shortest_path_internal(index_from: usize, index_to: usize, pads: &PadLay
             continue;
         };
 
-        paths.entry(Route::of_key(from, neighbor)).insert_entry(Route::new(&[Action::Move(d.clone())], index.abs_diff(index_from)));
+        let route = Route::new(&[Action::Move(d.clone())]);
+        paths.entry(Route::of_key(from, neighbor))
+            .or_insert_with(|| Vec::from_iter([route]))
+        ;
 
-        let route0 = match paths.get(&Route::of_key(neighbor, to)) {
-            Some(path0) => Some(path0.clone()),
-            None if neighbor == to => Some(Route::new(&[], 0)),
-            None => {
-                match init_shortest_path_internal(index, index_to, pads, paths, processing) {
-                    Some(k) => Some(paths[&k].clone()),
-                    None => None,
-                }
-                
-            }
+        let internal_route = match paths.get(&Route::of_key(neighbor, to)) {
+            Some(routes) => Some(routes.clone()),
+            None => init_shortest_path_internal(index, index_to, pads, paths, processing) 
         };
 
-        match (&shortest_path, route0) {
-            (None, Some(path0)) => {
-                let mut path = path0.path.clone();
-                path.insert(0, Action::Move(d));
-                shortest_path = Some(path);
+        if let Some(routes) = internal_route {
+            if pads.distance(index, index_to) + 1 == pads.distance(index_from, index_to) {
+                paths.entry(Route::of_key(from, to))
+                    .and_modify(|candidates| {
+                        routes.iter()
+                            .cloned()
+                            .map(|mut route| {
+                                route.prepend_action_path(Action::Move(d.clone()));
+                                route
+                            })
+                            .for_each(|route| candidates.push(route))
+                        ;
+                    })
+                    .or_insert_with(|| {
+                        routes.iter()
+                            .cloned()
+                            .map(|mut route| {
+                                route.prepend_action_path(Action::Move(d.clone()));
+                                route
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                ;
             }
-            (Some(shortest), Some(path0)) if shortest.len() > path0.path.len() + 1 => {
-                let mut path = path0.path.clone();
-                path.insert(0, Action::Move(d));
-                shortest_path = Some(path);
-            }
-            _ => {}
         }
     }
 
-    match shortest_path.clone() {
-        Some(mut route) => {
-            route.sort();
-            let key = Route::of_key(from, to);
-            paths.entry(key).insert_entry(Route::new(&route, index_to.abs_diff(index_from)));
-            Some(key)
-        }
-        None => None
-    }
+    paths.get(&Route::of_key(from, to)).and_then(|routes| Some(routes.clone()))
 }
 
-fn format_shortest_route(paths: &HashMap<RouteKey, Route>) -> HashMap<RouteKey, String> {
-    paths.into_iter()
-        .map(|(key, route)| {
-            let path = route.path.iter()
-                .map(|d| match d {
+fn format_shortest_route(pads: &PadLayout, paths: &StableHashMap<RouteKey, Vec<Route>>) -> StableHashMap<RouteKey, Vec<String>> {
+    let mut results = StableHashMap::default();
+
+    for (key, routes) in paths {
+        let mut candidates = StableHashSet::<(String, usize)>::default();
+        let mut min_cost = usize::MAX;
+
+        for route in routes {
+            let cost = pads.cost(&route.actions);
+            min_cost = usize::min(cost, min_cost);
+
+            let candidate = route.actions.iter()
+                .map(|path| match path {
                     Action::Move(d) => d.to_control_pad(),
                     Action::Push => 'A',
                 })
                 .collect::<String>()
             ;
-            (key.clone(), path)
-        })
-        .collect::<HashMap<_, _>>()
+            candidates.insert((candidate, cost));
+        }
+
+        results.entry(key.clone()).or_insert_with(|| {
+            candidates.into_iter()
+                .filter(|(_, cost)| *cost == min_cost)
+                .map(|(route, _)| route)
+                .collect::<Vec<_>>()
+        });
+    }
+
+    results
 }
 
-struct RouteCache<const N: usize> {
-    histories: [HashMap<RouteKey, u64>; N],
+#[allow(unused)]
+fn dump_shortest_routes(tag: &str, routes: &StableHashMap<RouteKey, Vec<String>>) {
+    eprintln!(">>>> SHORTEST {tag}");
+
+    for (key, route) in routes {
+        eprintln!("[{:<8?}] {:?}", key, route);
+    }
 }
 
-impl<const N: usize> RouteCache<N> {
-    fn new<'a>(route_keys: impl Iterator<Item = &'a RouteKey>) -> Self {
-        let tmpl = route_keys
-            .map(|k| (k.clone(), 0u64))
-            .collect::<HashMap<_, _>>()
-        ;
+#[derive(Debug)]
+enum EvalError {
+    RouteNotFound(char, char),
+}
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalError::RouteNotFound(from, to) => write!(f, "Route not found: ({from} -> {to})"),
+        }
+    }
+}
+impl std::error::Error for EvalError {}
 
+struct Cache<const N: usize> {
+    entries: Vec<StableHashMap<RouteKey, CacheEntry>>,
+}
+impl<const N: usize> Cache<N> {
+    fn new() -> Self {
         Self {
-            histories: std::array::from_fn(|_| tmpl.clone()),
+            entries: vec![StableHashMap::<RouteKey, CacheEntry>::default(); N],
         }
+    }
+
+    fn has_entry(&self, route: &RouteKey, depth: usize) -> bool {
+        self.entries[depth].contains_key(route)
+    }
+
+    fn get_mut<'a>(& 'a mut self, route: &RouteKey, depth: usize) -> &'a mut CacheEntry {
+        self.entries[depth].entry(route.clone()).or_insert_with(|| CacheEntry::new(route))    
     }
 }
 
-fn input_numbers<const N: usize>(code: &str, initial_state: char, shortest_routes: &HashMap<RouteKey, String>, cache: &mut RouteCache<N>) {
-    let mut last_state = initial_state;
-    let mut last_char = initial_state;
-
-    for ch in code.chars() {
-        if let Some(route) = shortest_routes.get(&(last_char, ch)) {
-            for pair in std::iter::once(last_state).chain(route.chars()).collect::<Vec<_>>().windows(2) {
-                if let Some(c) = cache.histories[N-1].get_mut(&Route::of_key(pair[0], pair[1])) {
-                    *c += 1;
-                }
-                last_state = pair[1];
-            }
-            if let Some(c) = cache.histories[N-1].get_mut(&(last_state, 'A')) {
-                *c += 1;
-            }
-            last_state = 'A';
+#[derive(Clone)]
+#[allow(unused)]
+struct CacheEntry {
+    route: RouteKey,
+    items: StableHashMap<RouteKey, u64>,
+}
+impl CacheEntry {
+    fn new(route: &RouteKey) -> Self {
+        Self {
+            route: route.clone(),
+            items: StableHashMap::<RouteKey, u64>::default(),
         }
-        last_char = ch;
+    }
+
+    fn total_len(&self) -> u64 {
+        total_length(&self.items)
+    }
+
+    fn merge(&mut self, history: &StableHashMap<RouteKey, u64>, count: u64) {
+        merge_history(history, &mut self.items, count);
     }
 }
 
-fn input_cursors_internal<const N: usize>(shortest_routes: &HashMap<RouteKey, String>, depth: usize, cache: &mut RouteCache<N>) {
-    let (next_hists, prev_hists) = cache.histories.split_at_mut(depth);
+fn total_length(history: &StableHashMap<(char, char), u64>) -> u64 {
+    history.into_iter()
+    .map(|(_, count)| *count)
+    .sum::<u64>()
+}
 
-    for (k, count0) in &prev_hists[0] {
-        if let Some(route) = shortest_routes.get(&k.clone()) {
-            for pair in format!("A{}A", route).chars().collect::<Vec<_>>().windows(2) {
-                if let Some(c) = next_hists[depth-1].get_mut(&Route::of_key(pair[0], pair[1])) {
-                    *c += count0;
-                }
-            }
-        }
+fn merge_history(from: &StableHashMap<(char, char), u64>, to: &mut StableHashMap<(char, char), u64>, rate: u64) {
+    for (k, v) in from {
+        to.entry(k.clone()).and_modify(|c| {
+            *c += *v / rate
+        })
+        .or_insert_with(|| {
+            *v / rate
+        });
     }
 }
 
-fn eval_route_len<const N: usize>(code: &str, key_pad_routes: &HashMap<RouteKey, String>, control_pad_routes: &HashMap<RouteKey, String>) -> Result<(u64, u64), Box<dyn std::error::Error>> {
-    let mut cache = RouteCache::<N>::new(control_pad_routes.keys());
+fn input_numbers(route: &str) -> StableHashMap<RouteKey, u64> {
+    let mut history = StableHashMap::<RouteKey, u64>::default();
+    let mut last_state = 'A';
 
-    input_numbers::<N>(code, 'A', &key_pad_routes, &mut cache);
-
-    for depth in (1..N).rev() {
-        input_cursors_internal::<N>(&control_pad_routes, depth, &mut cache);
+    for pair in format!("A{route}").chars().collect::<Vec<_>>().windows(2) {
+        history.entry(Route::of_key(pair[0], pair[1]))
+            .and_modify(|c| *c += 1)
+            .or_insert_with(|| 1)
+        ;
+        last_state = pair[1];
     }
-
-    let len = cache.histories[0].iter()
-        .map(|(_, count)| *count)
-        .sum::<u64>()
+    history.entry(Route::of_key(last_state, 'A'))
+        .and_modify(|c| *c += 1)
+        .or_insert_with(|| 1)
     ;
+    history
+}
 
-    Ok((len, code.trim_end_matches('A').parse::<u64>()?))
+fn input_cursors<const N: usize>(shortest_routes: &StableHashMap<RouteKey, Vec<String>>, depth: usize, prev_history: &StableHashMap<(char, char), u64>, cache: &mut Cache<N>) -> Result<(u64, StableHashMap<(char, char), u64>), Box<dyn std::error::Error>> {
+    if depth == 0 {
+        return Ok((total_length(prev_history), prev_history.clone()));
+    }
+
+    let mut total_len: u64 = 0;
+    let mut shortest_history = StableHashMap::<(char, char), u64>::default();
+
+    for ((from, to), count0) in prev_history.iter() {
+        let Some(candidates) = shortest_routes.get(&&Route::of_key(*from, *to)) else {
+            return Err(Box::new(EvalError::RouteNotFound(*from, *to)));
+        };
+
+        let mut current_history = None;
+        let route_key = Route::of_key(*from, *to);
+
+        if cache.has_entry(&route_key, depth) {
+            let cache_entry = cache.get_mut(&route_key, depth);
+            current_history = Some(cache_entry.items.clone());
+
+            total_len += cache_entry.total_len() * *count0;
+        }
+        else {
+            let mut shortest_len: u64 = u64::MAX;
+
+            for route in candidates {
+                let mut candidate_history = StableHashMap::<(char, char), u64>::default();
+
+                for pair in format!("A{}A", route).chars().collect::<Vec<_>>().windows(2) {
+                    candidate_history.entry(Route::of_key(pair[0], pair[1]))
+                        .and_modify(|c| *c += *count0)
+                        .or_insert_with(|| *count0)
+                    ;
+                }
+    
+                let (len, history) = input_cursors::<N>(shortest_routes, depth - 1, &candidate_history, cache)?;
+
+                if len < shortest_len {
+                    current_history = Some(history);
+                    shortest_len = len;
+                }
+            }
+
+            if let Some(current_history) = current_history.as_ref() {
+                let cache_entry = cache.get_mut(&route_key, depth);
+                cache_entry.merge(current_history, *count0);
+            }
+            
+            total_len += shortest_len
+        }
+
+        if let Some(history) = current_history {
+            merge_history(&history, &mut shortest_history, 1);
+        }
+    }
+
+    Ok((total_len, shortest_history))
+}
+
+fn eval_route_len_internal<const N: usize>(code: &str, key_pad_routes: &StableHashMap<RouteKey, Vec<String>>, control_pad_routes: &StableHashMap<RouteKey, Vec<String>>) -> Result<(u64, u64, StableHashMap<RouteKey, u64>), Box<dyn std::error::Error>> {
+    let mut total_len: u64 = 0;
+    let mut shortest_history = StableHashMap::<(char, char), u64>::default();
+    let mut cache = Cache::<N>::new();
+
+    for pair in format!("A{code}").chars().collect::<Vec<_>>().windows(2) {
+        let route_key = Route::of_key(pair[0], pair[1]);
+        let Some(candidates) = key_pad_routes.get(&route_key) else {
+            return Err(Box::new(EvalError::RouteNotFound(pair[0], pair[1])));
+        };
+
+        let mut shortest_len: u64 = u64::MAX;
+        let mut current_history = None;
+
+        for route in candidates {
+            let candidate_history = input_numbers(&route);
+
+            let (len, history) = match N < 1 {
+                true => {
+                    (total_length(&candidate_history), candidate_history)
+                }
+                false => {
+                    input_cursors(&control_pad_routes, N - 1, &candidate_history, &mut cache)?
+                }
+            };
+            if len < shortest_len {
+                shortest_len = len;
+                current_history = Some(history);
+            }
+        }
+
+        if let Some(current_history) = current_history {
+            merge_history(&current_history, &mut shortest_history, 1);
+        }
+
+        // eprintln!("{} [{}] ch: {} len: {}", code, N, pair[1], shortest_len);
+        total_len += shortest_len;
+    }
+
+    Ok((total_len, code.trim_end_matches('A').parse::<u64>()?, shortest_history))
+}
+
+fn eval_route_len<const N: usize>(code: &str, key_pad_routes: &StableHashMap<RouteKey, Vec<String>>, control_pad_routes: &StableHashMap<RouteKey, Vec<String>>) -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    let (shortest_len, value, _) = eval_route_len_internal::<N>(code, key_pad_routes, control_pad_routes)?;
+    // eprintln!("{code}: {shortest_len}");
+    Ok((shortest_len, value))
+}
+
+#[allow(unused)]
+fn dump_history(history: &StableHashMap<RouteKey, u64>) {
+    for (key, count) in history {
+        eprintln!("[{:<8?}] {:?}", key, count);
+    }
 }
 
 #[cfg(test)]
@@ -429,8 +554,7 @@ mod tests {
     fn resolve_part_1() -> Result<(), Box<dyn std::error::Error>> {
         const DEPTH: usize = 3;
 
-        let control_pad = PadLayout::new_control_pad();
-        let shortest_keys = init_keypad_shortest_path(&control_pad);
+        let shortest_keys = init_keypad_shortest_path();
         let shortest_controls = init_controlpad_shortest_path();
 
         assert_eq!((68, 29),  eval_route_len::<DEPTH>("029A", &shortest_keys, &shortest_controls)?);
@@ -440,5 +564,53 @@ mod tests {
         assert_eq!((64, 379), eval_route_len::<DEPTH>("379A", &shortest_keys, &shortest_controls)?);
         Ok(())
     }
+
+    #[test]
+    fn resolve_part_2() -> Result<(), Box<dyn std::error::Error>> {
+        const DEPTH: usize = 26;
+
+        let shortest_keys = init_keypad_shortest_path();
+        let shortest_controls = init_controlpad_shortest_path();
+
+        assert_eq!((84248089342, 340), eval_route_len::<DEPTH>("340A", &shortest_keys, &shortest_controls)?);
+        assert_eq!((91059074548, 149), eval_route_len::<DEPTH>("149A", &shortest_keys, &shortest_controls)?);
+        assert_eq!((86475783008, 582), eval_route_len::<DEPTH>("582A", &shortest_keys, &shortest_controls)?);
+        assert_eq!((80786362260, 780), eval_route_len::<DEPTH>("780A", &shortest_keys, &shortest_controls)?);
+        assert_eq!((87288844796, 463), eval_route_len::<DEPTH>("463A", &shortest_keys, &shortest_controls)?);
+        Ok(())
+    }
 }
 
+// (x) 195969155895596
+// (x) 780A [26] 80786362255
+
+// 780A [26] ch: 7 len: 31420065369 (-3) ^^^<< <^^^<
+// 780A [26] ch: 8 len: 14287938116
+// 780A [26] ch: 0 len: 20790420654 (-2)
+// 780A [26] ch: A len: 14287938116
+
+// 340A: 84248089342
+// 149A: 91059074548
+// 582A: 86475783008
+// (x) 780A [26] 80786362255
+// (x) 780A [25] 32475283856
+// (o)780A: 80786362260
+// 463A: 87288844796
+
+// 340: 84248089342
+// 149: 91059074548
+// 582: 86475783008
+
+// 780 [26] 80786362260
+
+// 31420065372 ^^^<<A
+// 14287938116
+// 20790420656 vvvA>A
+// 14287938116
+
+// 780 [25] 32475283856
+
+// 463: 87288844796
+
+// 195969155897936
+// 195969155897936
